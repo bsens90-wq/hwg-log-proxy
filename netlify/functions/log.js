@@ -29,6 +29,8 @@ exports.handler = async (event, context) => {
     const { action, logData, userCode } = JSON.parse(event.body || '{}');
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
     
+    console.log('Action:', action, 'UserCode:', userCode);
+    
     if (!GITHUB_TOKEN) {
       return {
         statusCode: 500,
@@ -259,6 +261,8 @@ exports.handler = async (event, context) => {
       };
       
     } else if (action === 'reactivateUser') {
+      console.log('reactivateUser 시작, userCode:', userCode);
+      
       try {
         const empResponse = await fetch(`https://api.github.com/repos/bsens90-wq/hwg_main/contents/data/employees.json`, {
           headers: {
@@ -267,12 +271,16 @@ exports.handler = async (event, context) => {
           }
         });
         
+        console.log('employees.json 응답 상태:', empResponse.status);
+        
         if (empResponse.ok) {
           const empFileData = await empResponse.json();
           const empContent = Buffer.from(empFileData.content, 'base64').toString('utf-8');
           let employees = JSON.parse(empContent);
           
           const userIndex = employees.findIndex(emp => emp.empno === userCode);
+          console.log('사용자 인덱스:', userIndex);
+          
           if (userIndex !== -1) {
             employees[userIndex].password = '1111';
             employees[userIndex].status = 'active';
@@ -295,26 +303,51 @@ exports.handler = async (event, context) => {
               })
             });
             
+            console.log('업데이트 응답 상태:', updateResponse.status);
+            
             if (updateResponse.ok) {
               return {
                 statusCode: 200,
                 headers,
                 body: JSON.stringify({ success: true })
               };
+            } else {
+              const errorText = await updateResponse.text();
+              console.error('업데이트 실패:', errorText);
+              return {
+                statusCode: 500,
+                headers,
+                body: JSON.stringify({ error: `Update failed: ${errorText}` })
+              };
             }
+          } else {
+            return {
+              statusCode: 404,
+              headers,
+              body: JSON.stringify({ error: 'User not found' })
+            };
           }
+        } else {
+          const errorText = await empResponse.text();
+          console.error('employees.json 읽기 실패:', errorText);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: `Failed to read employees: ${errorText}` })
+          };
         }
       } catch (error) {
         console.error('사용자 재승인 오류:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: `Exception: ${error.message}` })
+        };
       }
       
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: 'Failed to reactivate user' })
-      };
-      
     } else if (action === 'suspendUser') {
+      console.log('suspendUser 시작, userCode:', userCode);
+      
       try {
         const empResponse = await fetch(`https://api.github.com/repos/bsens90-wq/hwg_main/contents/data/employees.json`, {
           headers: {
@@ -323,14 +356,19 @@ exports.handler = async (event, context) => {
           }
         });
         
+        console.log('employees.json 응답 상태:', empResponse.status);
+        
         if (empResponse.ok) {
           const empFileData = await empResponse.json();
           const empContent = Buffer.from(empFileData.content, 'base64').toString('utf-8');
           let employees = JSON.parse(empContent);
           
           const userIndex = employees.findIndex(emp => emp.empno === userCode);
+          console.log('사용자 인덱스:', userIndex);
+          
           if (userIndex !== -1) {
             const randomPassword = Math.floor(1000 + Math.random() * 9000).toString();
+            console.log('생성된 랜덤 패스워드:', randomPassword);
             
             employees[userIndex].password = randomPassword;
             employees[userIndex].status = 'suspended';
@@ -352,32 +390,61 @@ exports.handler = async (event, context) => {
               })
             });
             
+            console.log('업데이트 응답 상태:', updateResponse.status);
+            
             if (updateResponse.ok) {
               return {
                 statusCode: 200,
                 headers,
                 body: JSON.stringify({ success: true })
               };
+            } else {
+              const errorText = await updateResponse.text();
+              console.error('업데이트 실패:', errorText);
+              return {
+                statusCode: 500,
+                headers,
+                body: JSON.stringify({ error: `Update failed: ${errorText}` })
+              };
             }
+          } else {
+            return {
+              statusCode: 404,
+              headers,
+              body: JSON.stringify({ error: 'User not found' })
+            };
           }
+        } else {
+          const errorText = await empResponse.text();
+          console.error('employees.json 읽기 실패:', errorText);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: `Failed to read employees: ${errorText}` })
+          };
         }
       } catch (error) {
         console.error('사용자 승인해제 오류:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: `Exception: ${error.message}` })
+        };
       }
-      
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: 'Failed to suspend user' })
-      };
     }
+    
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: `Unknown action: ${action}` })
+    };
     
   } catch (error) {
     console.error('Proxy error:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: 'Internal server error' })
+      body: JSON.stringify({ error: `Internal server error: ${error.message}` })
     };
   }
 };
