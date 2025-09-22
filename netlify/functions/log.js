@@ -345,93 +345,96 @@ exports.handler = async (event, context) => {
         };
       }
       
-    } else if (action === 'suspendUser') {
-      console.log('suspendUser 시작, userCode:', userCode);
+   } else if (action === 'suspendUser') {
+  console.log('suspendUser 시작, userCode:', userCode, 'type:', typeof userCode);
+  
+  try {
+    const empResponse = await fetch(`https://api.github.com/repos/bsens90-wq/hwg_main/contents/data/employees.json`, {
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+    
+    if (empResponse.ok) {
+      const empFileData = await empResponse.json();
+      const empContent = Buffer.from(empFileData.content, 'base64').toString('utf-8');
+      let employees = JSON.parse(empContent);
       
-      try {
-        const empResponse = await fetch(`https://api.github.com/repos/bsens90-wq/hwg_main/contents/data/employees.json`, {
+      console.log('전체 직원 수:', employees.length);
+      console.log('첫 번째 직원:', employees[0]);
+      
+      // 문자열과 숫자 모두 비교
+      const userIndex = employees.findIndex(emp => 
+        String(emp.empno) === String(userCode) || emp.empno === userCode
+      );
+      
+      console.log('사용자 인덱스:', userIndex);
+      
+      if (userIndex !== -1) {
+        console.log('찾은 사용자:', employees[userIndex]);
+        
+        const randomPassword = Math.floor(1000 + Math.random() * 9000).toString();
+        
+        employees[userIndex].password = randomPassword;
+        employees[userIndex].status = 'suspended';
+        employees[userIndex].suspendedDate = new Date().toISOString().split('T')[0];
+        
+        const updatedContent = Buffer.from(JSON.stringify(employees, null, 2)).toString('base64');
+        
+        const updateResponse = await fetch(`https://api.github.com/repos/bsens90-wq/hwg_main/contents/data/employees.json`, {
+          method: 'PUT',
           headers: {
             'Authorization': `token ${GITHUB_TOKEN}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: `사용자 ${userCode} 승인해제`,
+            content: updatedContent,
+            sha: empFileData.sha
+          })
         });
         
-        console.log('employees.json 응답 상태:', empResponse.status);
-        
-        if (empResponse.ok) {
-          const empFileData = await empResponse.json();
-          const empContent = Buffer.from(empFileData.content, 'base64').toString('utf-8');
-          let employees = JSON.parse(empContent);
-          
-          const userIndex = employees.findIndex(emp => emp.empno === userCode);
-          console.log('사용자 인덱스:', userIndex);
-          
-          if (userIndex !== -1) {
-            const randomPassword = Math.floor(1000 + Math.random() * 9000).toString();
-            console.log('생성된 랜덤 패스워드:', randomPassword);
-            
-            employees[userIndex].password = randomPassword;
-            employees[userIndex].status = 'suspended';
-            employees[userIndex].suspendedDate = new Date().toISOString().split('T')[0];
-            
-            const updatedContent = Buffer.from(JSON.stringify(employees, null, 2)).toString('base64');
-            
-            const updateResponse = await fetch(`https://api.github.com/repos/bsens90-wq/hwg_main/contents/data/employees.json`, {
-              method: 'PUT',
-              headers: {
-                'Authorization': `token ${GITHUB_TOKEN}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                message: `사용자 ${userCode} 승인해제`,
-                content: updatedContent,
-                sha: empFileData.sha
-              })
-            });
-            
-            console.log('업데이트 응답 상태:', updateResponse.status);
-            
-            if (updateResponse.ok) {
-              return {
-                statusCode: 200,
-                headers,
-                body: JSON.stringify({ success: true })
-              };
-            } else {
-              const errorText = await updateResponse.text();
-              console.error('업데이트 실패:', errorText);
-              return {
-                statusCode: 500,
-                headers,
-                body: JSON.stringify({ error: `Update failed: ${errorText}` })
-              };
-            }
-          } else {
-            return {
-              statusCode: 404,
-              headers,
-              body: JSON.stringify({ error: 'User not found' })
-            };
-          }
+        if (updateResponse.ok) {
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({ success: true })
+          };
         } else {
-          const errorText = await empResponse.text();
-          console.error('employees.json 읽기 실패:', errorText);
+          const errorText = await updateResponse.text();
           return {
             statusCode: 500,
             headers,
-            body: JSON.stringify({ error: `Failed to read employees: ${errorText}` })
+            body: JSON.stringify({ error: `Update failed: ${errorText}` })
           };
         }
-      } catch (error) {
-        console.error('사용자 승인해제 오류:', error);
+      } else {
+        // 디버깅을 위해 모든 empno 출력
+        const allEmpnos = employees.map(emp => emp.empno);
+        console.log('모든 직원 코드:', allEmpnos);
+        
         return {
-          statusCode: 500,
+          statusCode: 404,
           headers,
-          body: JSON.stringify({ error: `Exception: ${error.message}` })
+          body: JSON.stringify({ 
+            error: 'User not found',
+            searchedFor: userCode,
+            availableUsers: allEmpnos.slice(0, 5) // 처음 5개만 반환
+          })
         };
       }
     }
+  } catch (error) {
+    console.error('사용자 승인해제 오류:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: `Exception: ${error.message}` })
+    };
+  }
+}
     
     return {
       statusCode: 400,
