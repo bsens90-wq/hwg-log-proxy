@@ -303,23 +303,79 @@ exports.handler = async (event, context) => {
             }
           }
         }
-      } catch (error) {
-        console.error('사용자 재승인 오류:', error);
-      }
-      
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: 'Failed to reactivate user' })
-      };
+     } catch (error) {
+      console.error('사용자 재승인 오류:', error);
     }
     
-  } catch (error) {
-    console.error('Proxy error:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: 'Internal server error' })
+      body: JSON.stringify({ error: 'Failed to reactivate user' })
+    };
+    
+  } else if (action === 'suspendUser') {
+    try {
+      const empResponse = await fetch(`https://api.github.com/repos/bsens90-wq/hwg_main/contents/data/employees.json`, {
+        headers: {
+          'Authorization': `token ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+      
+      if (empResponse.ok) {
+        const empFileData = await empResponse.json();
+        const empContent = Buffer.from(empFileData.content, 'base64').toString('utf-8');
+        let employees = JSON.parse(empContent);
+        
+        const userIndex = employees.findIndex(emp => emp.empno === userCode);
+        if (userIndex !== -1) {
+          const randomPassword = Math.floor(1000 + Math.random() * 9000).toString();
+          
+          employees[userIndex].password = randomPassword;
+          employees[userIndex].status = 'suspended';
+          employees[userIndex].suspendedDate = new Date().toISOString().split('T')[0];
+          
+          const updatedContent = Buffer.from(JSON.stringify(employees, null, 2)).toString('base64');
+          
+          const updateResponse = await fetch(`https://api.github.com/repos/bsens90-wq/hwg_main/contents/data/employees.json`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `token ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              message: `사용자 ${userCode} 승인해제`,
+              content: updatedContent,
+              sha: empFileData.sha
+            })
+          });
+          
+          if (updateResponse.ok) {
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify({ success: true })
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.error('사용자 승인해제 오류:', error);
+    }
+    
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'Failed to suspend user' })
     };
   }
+  
+} catch (error) {
+  console.error('Proxy error:', error);
+  return {
+    statusCode: 500,
+    headers,
+    body: JSON.stringify({ error: 'Internal server error' })
+  };
 };
