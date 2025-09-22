@@ -1,0 +1,7 @@
+{
+  "name": "hwg-log-proxy",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo 'No build step required'"
+  }
+}
